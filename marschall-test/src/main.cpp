@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <memory>
-#include "EventDispatcher.h"
+#include "marschall.hpp"
 
 class TestEventA : public EventBase<TestEventA> {};
 class TestEventB : public EventBase<TestEventB> {};

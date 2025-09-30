@@ -30,7 +30,7 @@ project "marschall"
 	objdir ("%{wks.location}/bin-int/" .. outputdir .. "/%{prj.name}")
 
 	files {
-		"%{prj.location}/include/**.h",
+		"%{prj.location}/include/**.hpp",
 	}
 
 	includedirs {
@@ -64,7 +64,7 @@ project "marschall-test"
 	objdir ("%{wks.location}/bin-int/" .. outputdir .. "/%{prj.name}")
 
 	files {
-		"%{prj.location}/src/**.h",
+		"%{prj.location}/src/**.hpp",
 		"%{prj.location}/src/**.cpp",
 		"%{wks.location}/vendor/googletest/googletest/src/gtest-all.cc"
 	}
