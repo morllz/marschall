@@ -4,15 +4,16 @@
 #include <unordered_set>
 #include <functional>
 #include <algorithm>
+#include <queue>
 
 class EventDispatcher
 {
 public:
 
 	template <EventType EType>
-	void subscribeTo(std::shared_ptr<EventListener<EType>> listener)
+	void subscribeTo(const std::shared_ptr<EventListener<EType>>& listener)
 	{
-		auto& subs = subscriptions[typeid(EType).hash_code()];
+		auto& subs = subscriptions[getEventTypeKey<EType>()];
 
 		std::weak_ptr<EventListener<EType>> weak = listener;
 
@@ -20,7 +21,7 @@ public:
 
 		subs.emplace(Subscriber{
 			id,
-			[this, weak, id](const Event& event)
+			[weak = std::move(weak)](const Event& event)
 			{
 				if (auto l = weak.lock())
 					l->onEvent(static_cast<const EType&>(event));
@@ -33,15 +34,15 @@ public:
 
 	template <EventType... EType, typename T>
 		requires (sizeof...(EType) > 1)
-	void subscribeTo(std::shared_ptr<T> listener)
+	void subscribeTo(const std::shared_ptr<T>& listener)
 	{
 		(subscribeTo<EType>(listener), ...);
 	}
 
 	template <EventType EType>
-	void subscribeOnceTo(std::shared_ptr<EventListener<EType>> listener)
+	void subscribeOnceTo(const std::shared_ptr<EventListener<EType>>& listener)
 	{
-		auto& subs = subscriptions[typeid(EType).hash_code()];
+		auto& subs = subscriptions[getEventTypeKey<EType>()];
 
 		std::weak_ptr<EventListener<EType>> weak = listener;
 
@@ -49,7 +50,7 @@ public:
 
 		subs.emplace(Subscriber{
 			id,
-			[this, weak, id](const Event& event)
+			[weak = std::move(weak)](const Event& event)
 			{
 				if (auto l = weak.lock())
 					l->onEvent(static_cast<const EType&>(event));
@@ -60,7 +61,7 @@ public:
 
 	template <EventType... EType, typename T>
 		requires (sizeof...(EType) > 1)
-	void subscribeOnceTo(std::shared_ptr<T> listener)
+	void subscribeOnceTo(const std::shared_ptr<T>& listener)
 	{
 		(subscribeOnceTo<EType>(listener), ...);
 	}
@@ -68,25 +69,51 @@ public:
 	template <EventType EType>
 	void unsubscribeFrom(const EventListener<EType>* id)
 	{
-		auto& subs = subscriptions[typeid(EType).hash_code()];
+		auto& subs = subscriptions[getEventTypeKey<EType>()];
 
 		subs.erase(static_cast<const void*>(id));
 	}
 
 	template <EventType EType>
-	void unsubscribeFrom(std::shared_ptr<EventListener<EType>> listener)
+	void unsubscribeFrom(const std::shared_ptr<EventListener<EType>>& listener)
 	{
 		unsubscribeFrom<EType>(listener.get());
 	}
 
 	void dispatch(const Event& event)
 	{
-		auto it = subscriptions.find(typeid(event).hash_code());
+		auto it = subscriptions.find(event.getTypeKey());
 		if (it != subscriptions.end())
 		{
 			std::erase_if(it->second, [&event](const Subscriber& s) {
 				return !s.callback(event);
 				});
+		}
+	}
+	template <EventType EType>
+		requires !std::is_same_v<EType, Event>
+	void dispatch(const EType& event)
+	{
+		auto it = subscriptions.find(getEventTypeKey<EType>());
+		if (it != subscriptions.end())
+		{
+			std::erase_if(it->second, [&event](const Subscriber& s) {
+				return !s.callback(event);
+				});
+		}
+	}
+
+	void queueEvent(std::unique_ptr<Event> event)
+	{
+		eventQueue.push(std::move(event));
+	}
+
+	void processQueue()
+	{
+		while (!eventQueue.empty())
+		{
+			dispatch(*eventQueue.front());
+			eventQueue.pop();
 		}
 	}
 
@@ -121,5 +148,6 @@ private:
 		}
 	};
 
-	std::unordered_map<size_t, std::unordered_set<Subscriber, SubscriberHash, SubscriberEqual>> subscriptions;
+	std::unordered_map<EventTypeKey, std::unordered_set<Subscriber, SubscriberHash, SubscriberEqual>> subscriptions;
+	std::queue<std::unique_ptr<Event>> eventQueue;
 };

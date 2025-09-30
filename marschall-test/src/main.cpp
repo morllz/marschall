@@ -1,28 +1,22 @@
 #include <gtest/gtest.h>
 #include <memory>
 #include "EventDispatcher.h"
-#include "EventListener.h"
-#include "Event.h"
 
-// Test event types
-class TestEventA : public Event {};
-class TestEventB : public Event {};
+class TestEventA : public EventBase<TestEventA> {};
+class TestEventB : public EventBase<TestEventB> {};
 
-// Simple listener for TestEventA
 class TestListenerA : public EventListener<TestEventA> {
 public:
     int callCount = 0;
     void onEvent(const TestEventA&) override { ++callCount; }
 };
 
-// Simple listener for TestEventB
 class TestListenerB : public EventListener<TestEventB> {
 public:
     int callCount = 0;
     void onEvent(const TestEventB&) override { ++callCount; }
 };
 
-// Multi-event listener
 class TestMultiListener : public MultiEventListener<TestEventA, TestEventB> {
 public:
     int aCount = 0;
@@ -107,6 +101,88 @@ TEST(EventDispatcher, UnsubscribeByPointer) {
 
     TestEventA event;
     dispatcher.dispatch(event);
+
+    EXPECT_EQ(listener->callCount, 0);
+}
+
+TEST(EventDispatcher, RemoveExpiredSubscribers) {
+    EventDispatcher dispatcher;
+    int callCount = 0;
+
+    {
+        struct LocalListener : public EventListener<TestEventA> {
+            int* callCountPtr;
+            LocalListener(int* ptr) : callCountPtr(ptr) {}
+            void onEvent(const TestEventA&) override { ++(*callCountPtr); }
+        };
+        auto listener = std::make_shared<LocalListener>(&callCount);
+        dispatcher.subscribeTo<TestEventA>(listener);
+
+        TestEventA event;
+        dispatcher.dispatch(event);
+        EXPECT_EQ(callCount, 1);
+    }
+
+    TestEventA event;
+    dispatcher.dispatch(event);
+    EXPECT_EQ(callCount, 1);
+}
+
+TEST(EventDispatcher, QueueEventAndProcessQueue) {
+    EventDispatcher dispatcher;
+    auto listener = std::make_shared<TestListenerA>();
+    dispatcher.subscribeTo<TestEventA>(listener);
+
+    TestEventA event;
+    dispatcher.queueEvent(std::make_unique<TestEventA>(event));
+
+    EXPECT_EQ(listener->callCount, 0);
+
+    dispatcher.processQueue();
+
+    EXPECT_EQ(listener->callCount, 1);
+}
+
+TEST(EventDispatcher, QueueMultipleEvents) {
+    EventDispatcher dispatcher;
+    auto listenerA = std::make_shared<TestListenerA>();
+    auto listenerB = std::make_shared<TestListenerB>();
+    dispatcher.subscribeTo<TestEventA>(listenerA);
+    dispatcher.subscribeTo<TestEventB>(listenerB);
+
+    TestEventA eventA;
+    TestEventB eventB;
+    dispatcher.queueEvent(std::make_unique<TestEventA>(eventA));
+    dispatcher.queueEvent(std::make_unique<TestEventB>(eventB));
+
+    EXPECT_EQ(listenerA->callCount, 0);
+    EXPECT_EQ(listenerB->callCount, 0);
+
+    dispatcher.processQueue();
+
+    EXPECT_EQ(listenerA->callCount, 1);
+    EXPECT_EQ(listenerB->callCount, 1);
+}
+
+TEST(EventDispatcher, QueueEventWithNoSubscribers) {
+    EventDispatcher dispatcher;
+    TestEventA event;
+    dispatcher.queueEvent(std::make_unique<TestEventA>(event));
+
+    dispatcher.processQueue();
+}
+
+TEST(EventDispatcher, QueueEventUnsubscribedBeforeProcess) {
+    EventDispatcher dispatcher;
+    auto listener = std::make_shared<TestListenerA>();
+    dispatcher.subscribeTo<TestEventA>(listener);
+
+    TestEventA event;
+    dispatcher.queueEvent(std::make_unique<TestEventA>(event));
+
+    dispatcher.unsubscribeFrom<TestEventA>(listener);
+
+    dispatcher.processQueue();
 
     EXPECT_EQ(listener->callCount, 0);
 }
