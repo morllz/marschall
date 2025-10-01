@@ -2,8 +2,8 @@
 #include <memory>
 #include "marschall.hpp"
 
-class TestEventA : public EventBase<TestEventA> {};
-class TestEventB : public EventBase<TestEventB> {};
+class TestEventA : public Event {};
+class TestEventB : public Event {};
 
 class TestListenerA : public EventListener<TestEventA> {
 public:
@@ -90,19 +90,6 @@ TEST(EventDispatcher, SubscribeOnceMultiEvent) {
 
     EXPECT_EQ(listener->aCount, 1);
     EXPECT_EQ(listener->bCount, 1);
-}
-
-TEST(EventDispatcher, UnsubscribeByPointer) {
-    EventDispatcher dispatcher;
-    auto listener = std::make_shared<TestListenerA>();
-    dispatcher.subscribeTo<TestEventA>(listener);
-
-    dispatcher.unsubscribeFrom(listener.get());
-
-    TestEventA event;
-    dispatcher.dispatch(event);
-
-    EXPECT_EQ(listener->callCount, 0);
 }
 
 TEST(EventDispatcher, RemoveExpiredSubscribers) {
